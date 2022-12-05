@@ -1,6 +1,6 @@
 # mcumgr
 
-This is mcumgr, version 0.2.0
+This is mcumgr, version 0.3.0
 
 mcumgr is a management library for 32-bit MCUs.   The goal of mcumgr is to
 define a common management infrastructure with pluggable transport and encoding
@@ -30,7 +30,7 @@ not require MCUboot.
 
 The `mcumgr` command line tool is available at:
 https://github.com/apache/mynewt-mcumgr-cli.  The command line tool requires [Go
-1.7 or later](https://golang.org/dl/).  Once Go is installed and set up on your
+1.12 or later](https://golang.org/dl/).  Once Go is installed and set up on your
 system, you can install the mcumgr CLI tool by issuing the following `go get`
 command:
 

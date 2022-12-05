@@ -36,14 +36,12 @@ img_mgmt_state_flags(int query_slot)
     uint8_t flags;
     int swap_type;
 
-    assert(query_slot == 0 || query_slot == 1);
-
     flags = 0;
 
     /* Determine if this is is pending or confirmed (only applicable for
      * unified images and loaders.
      */
-    swap_type = img_mgmt_impl_swap_type();
+    swap_type = img_mgmt_impl_swap_type(query_slot);
     switch (swap_type) {
     case IMG_MGMT_SWAP_TYPE_NONE:
         if (query_slot == IMG_MGMT_BOOT_CURR_SLOT) {
@@ -205,7 +203,8 @@ img_mgmt_state_read(struct mgmt_ctxt *ctxt)
 
     err |= cbor_encoder_create_array(&ctxt->encoder, &images,
                                        CborIndefiniteLength);
-    for (i = 0; i < 2; i++) {
+
+    for (i = 0; i < 2 * IMG_MGMT_UPDATABLE_IMAGE_NUMBER; i++) {
         rc = img_mgmt_read_info(i, &ver, hash, &flags);
         if (rc != 0) {
             continue;
@@ -215,8 +214,13 @@ img_mgmt_state_read(struct mgmt_ctxt *ctxt)
 
         err |= cbor_encoder_create_map(&images, &image,
                                          CborIndefiniteLength);
+
+#if IMG_MGMT_UPDATABLE_IMAGE_NUMBER > 1
+        err |= cbor_encode_text_stringz(&image, "image");
+        err |= cbor_encode_int(&image, i >> 1);
+#endif
         err |= cbor_encode_text_stringz(&image, "slot");
-        err |= cbor_encode_int(&image, i);
+        err |= cbor_encode_int(&image, i % 2);
 
         err |= cbor_encode_text_stringz(&image, "version");
         img_mgmt_ver_str(&ver, vers_str);
@@ -225,32 +229,47 @@ img_mgmt_state_read(struct mgmt_ctxt *ctxt)
         err |= cbor_encode_text_stringz(&image, "hash");
         err |= cbor_encode_byte_string(&image, hash, IMAGE_HASH_LEN);
 
-        err |= cbor_encode_text_stringz(&image, "bootable");
-        err |= cbor_encode_boolean(&image, !(flags & IMAGE_F_NON_BOOTABLE));
+        if (!IMG_MGMT_FRUGAL_LIST || !(flags & IMAGE_F_NON_BOOTABLE)) {
+            err |= cbor_encode_text_stringz(&image, "bootable");
+            err |= cbor_encode_boolean(&image, !(flags & IMAGE_F_NON_BOOTABLE));
+        }
 
-        err |= cbor_encode_text_stringz(&image, "pending");
-        err |= cbor_encode_boolean(&image,
-                                     state_flags & IMG_MGMT_STATE_F_PENDING);
+        if (!IMG_MGMT_FRUGAL_LIST || (state_flags & IMG_MGMT_STATE_F_PENDING)) {
+            err |= cbor_encode_text_stringz(&image, "pending");
+            err |= cbor_encode_boolean(&image,
+                                    state_flags & IMG_MGMT_STATE_F_PENDING);
+        }
 
-        err |= cbor_encode_text_stringz(&image, "confirmed");
-        err |= cbor_encode_boolean(&image,
-                                     state_flags & IMG_MGMT_STATE_F_CONFIRMED);
+        if (!IMG_MGMT_FRUGAL_LIST ||
+            (state_flags & IMG_MGMT_STATE_F_CONFIRMED)) {
+            err |= cbor_encode_text_stringz(&image, "confirmed");
+            err |= cbor_encode_boolean(&image,
+                                    state_flags & IMG_MGMT_STATE_F_CONFIRMED);
+        }
 
-        err |= cbor_encode_text_stringz(&image, "active");
-        err |= cbor_encode_boolean(&image,
-                                     state_flags & IMG_MGMT_STATE_F_ACTIVE);
+        if (!IMG_MGMT_FRUGAL_LIST || (state_flags & IMG_MGMT_STATE_F_ACTIVE)) {
+            err |= cbor_encode_text_stringz(&image, "active");
+            err |= cbor_encode_boolean(&image,
+                                    state_flags & IMG_MGMT_STATE_F_ACTIVE);
+        }
 
-        err |= cbor_encode_text_stringz(&image, "permanent");
-        err |= cbor_encode_boolean(&image,
-                                     state_flags & IMG_MGMT_STATE_F_PERMANENT);
+        if (!IMG_MGMT_FRUGAL_LIST ||
+            (state_flags & IMG_MGMT_STATE_F_PERMANENT)) {
+            err |= cbor_encode_text_stringz(&image, "permanent");
+            err |= cbor_encode_boolean(&image,
+                                    state_flags & IMG_MGMT_STATE_F_PERMANENT);
+        }
 
         err |= cbor_encoder_close_container(&images, &image);
     }
 
     err |= cbor_encoder_close_container(&ctxt->encoder, &images);
 
-    err |= cbor_encode_text_stringz(&ctxt->encoder, "splitStatus");
-    err |= cbor_encode_int(&ctxt->encoder, 0);
+    /* splitStatus is always 0 so in frugal list it is not present at all */
+    if (!IMG_MGMT_FRUGAL_LIST) {
+        err |= cbor_encode_text_stringz(&ctxt->encoder, "splitStatus");
+        err |= cbor_encode_int(&ctxt->encoder, 0);
+    }
 
     if (err != 0) {
         return MGMT_ERR_ENOMEM;

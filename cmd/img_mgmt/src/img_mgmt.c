@@ -112,6 +112,8 @@ img_mgmt_read_info(int image_slot, struct image_version *ver, uint8_t *hash,
 
 #if IMG_MGMT_DUMMY_HDR
     uint8_t dummy_hash[] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
                             0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
 
     if (!hash && !ver && !flags) {
@@ -241,7 +243,7 @@ img_mgmt_find_by_ver(struct image_version *find, uint8_t *hash)
     int i;
     struct image_version ver;
 
-    for (i = 0; i < 2; i++) {
+    for (i = 0; i < 2 * IMG_MGMT_UPDATABLE_IMAGE_NUMBER; i++) {
         if (img_mgmt_read_info(i, &ver, hash, NULL) != 0) {
             continue;
         }
@@ -262,7 +264,7 @@ img_mgmt_find_by_hash(uint8_t *find, struct image_version *ver)
     int i;
     uint8_t hash[IMAGE_HASH_LEN];
 
-    for (i = 0; i < 2; i++) {
+    for (i = 0; i < 2 * IMG_MGMT_UPDATABLE_IMAGE_NUMBER; i++) {
         if (img_mgmt_read_info(i, ver, hash, NULL) != 0) {
             continue;
         }
@@ -313,6 +315,10 @@ img_mgmt_erase(struct mgmt_ctxt *ctxt)
     }
     
     rc = img_mgmt_impl_erase_slot();
+
+    if (!rc) {
+        img_mgmt_dfu_stopped();
+    }
 
     err = 0;
     err |= cbor_encode_text_stringz(&ctxt->encoder, "rc");
@@ -394,42 +400,49 @@ img_mgmt_upload(struct mgmt_ctxt *ctxt)
         .data_len = 0,
         .data_sha_len = 0,
         .upgrade = false,
+        .image = 0,
     };
 
     const struct cbor_attr_t off_attr[] = {
         [0] = {
+            .attribute = "image",
+            .type = CborAttrUnsignedIntegerType,
+            .addr.uinteger = &req.image,
+            .nodefault = true
+        },
+        [1] = {
             .attribute = "data",
             .type = CborAttrByteStringType,
             .addr.bytestring.data = req.img_data,
             .addr.bytestring.len = &req.data_len,
             .len = sizeof(req.img_data)
         },
-        [1] = {
+        [2] = {
             .attribute = "len",
             .type = CborAttrUnsignedIntegerType,
             .addr.uinteger = &req.size,
             .nodefault = true
         },
-        [2] = {
+        [3] = {
             .attribute = "off",
             .type = CborAttrUnsignedIntegerType,
             .addr.uinteger = &req.off,
             .nodefault = true
         },
-        [3] = {
+        [4] = {
             .attribute = "sha",
             .type = CborAttrByteStringType,
             .addr.bytestring.data = req.data_sha,
             .addr.bytestring.len = &req.data_sha_len,
             .len = sizeof(req.data_sha)
         },
-        [4] = {
+        [5] = {
             .attribute = "upgrade",
             .type = CborAttrBooleanType,
             .addr.boolean = &req.upgrade,
             .dflt.boolean = false,
         },
-        [5] = { 0 },
+        [6] = { 0 },
     };
     int rc;
     const char *errstr = NULL;
@@ -504,6 +517,8 @@ img_mgmt_upload(struct mgmt_ctxt *ctxt)
             }
         }
 #endif
+    } else {
+        cmd_status_arg.status = IMG_MGMT_ID_UPLOAD_STATUS_ONGOING;
     }
 
     /* Write the image data to flash. */
@@ -531,7 +546,7 @@ img_mgmt_upload(struct mgmt_ctxt *ctxt)
             if (g_img_mgmt_state.off == g_img_mgmt_state.size) {
                 /* Done */
                 img_mgmt_dfu_pending();
-                cmd_status_arg.status = IMG_MGMT_ID_UPLOAD_STATUS_ONGOING;
+                cmd_status_arg.status = IMG_MGMT_ID_UPLOAD_STATUS_COMPLETE;
                 g_img_mgmt_state.area_id = -1;
             }
         }

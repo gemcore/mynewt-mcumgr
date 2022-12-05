@@ -22,7 +22,7 @@
 #include "tinycbor/cbor_buf_reader.h"
 
 #ifdef __ZEPHYR__
-#include <zephyr.h>
+#include <zephyr/kernel.h>
 #ifdef CONFIG_MGMT_CBORATTR_MAX_SIZE
 #define CBORATTR_MAX_SIZE CONFIG_MGMT_CBORATTR_MAX_SIZE
 #else
@@ -306,7 +306,7 @@ cbor_internal_read_object(CborValue *root_value,
                 err |= CborErrorIllegalType;
             }
         }
-        cbor_value_advance(&cur_value);
+        err = cbor_value_advance(&cur_value);
     }
     if (!err) {
         /* that should be it for this container */
